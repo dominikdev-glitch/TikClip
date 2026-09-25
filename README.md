@@ -47,6 +47,19 @@ npm audit --omit=dev
 
 GitHub Actions runs the same checks for pushes and pull requests.
 
+## Render Deployment
+
+The repository includes [render.yaml](render.yaml) for a free Render **Web Service** deployment. The bot keeps Telegram long polling active and exposes a small `/health` endpoint so Render can monitor the process.
+
+1. Sign in to [Render](https://dashboard.render.com/).
+2. Select **New**, then **Blueprint**.
+3. Connect `dominikdev-glitch/TikClip` and choose the `main` branch.
+4. Review the `tikclip-bot` Web Service and create the Blueprint.
+5. Enter your Telegram BotFather token when Render prompts for the secret `TELEGRAM_BOT_TOKEN`.
+6. Open the worker logs and confirm that it reports `Bot started`.
+
+The Blueprint enables automatic deploys for new commits. Only run one Render service for this bot token, because multiple long-polling processes compete for Telegram updates. Render’s free Web Services can spin down after inactivity, so the bot may need a short wake-up period before responding. A paid instance avoids that sleep behavior.
+
 ## Docker Deployment
 
 Build the image:

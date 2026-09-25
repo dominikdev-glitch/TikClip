@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: tikclip-bot
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TIKWM_API_URL
+        value: https://www.tikwm.com/api/
+      - key: REQUEST_TIMEOUT_MS
+        value: '30000'
+      - key: API_RETRIES
+        value: '2'
+      - key: RATE_LIMIT_WINDOW_MS
+        value: '60000'
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: '5'
+      - key: MAX_CONCURRENT_DOWNLOADS
+        value: '2'
+      - key: MAX_VIDEO_SIZE_MB
+        value: '50'

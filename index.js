@@ -1,3 +1,4 @@
+const http = require('node:http');
 const { Bot } = require('grammy');
 
 const config = require('./src/config');
@@ -21,6 +22,19 @@ const rateLimitCleanup = setInterval(
   config.rateLimitWindow,
 );
 rateLimitCleanup.unref();
+
+const healthServer = http.createServer((request, response) => {
+  if (request.url === '/health') {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ status: 'ok' }));
+    return;
+  }
+
+  response.writeHead(404);
+  response.end();
+});
+
+healthServer.listen(Number(process.env.PORT || 10_000), '0.0.0.0');
 
 function log(level, message, details = {}) {
   const entry = { time: new Date().toISOString(), level, message, ...details };
@@ -145,6 +159,7 @@ bot.catch((error) => {
 const shutdown = (signal) => {
   log('log', 'Stopping bot', { signal });
   bot.stop();
+  healthServer.close();
 };
 
 process.once('SIGINT', () => shutdown('SIGINT'));
