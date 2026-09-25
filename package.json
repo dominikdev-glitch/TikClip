@@ -1,0 +1,32 @@
+{
+  "name": "tik-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot that downloads TikTok videos without watermarks.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "check": "node --check index.js && node --check src/config.js && node --check src/url-utils.js && node --check src/limiter.js && node --check src/tikwm.js",
+    "test": "node --test",
+    "lint": "eslint .",
+    "format:check": "prettier --check ."
+  },
+  "keywords": [
+    "telegram",
+    "tiktok",
+    "bot"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "axios": "^1.12.2",
+    "dotenv": "^18.0.3",
+    "grammy": "^1.38.4"
+  },
+  "devDependencies": {
+    "eslint": "^9.36.0",
+    "globals": "^16.4.0",
+    "prettier": "^3.6.2"
+  }
+}
