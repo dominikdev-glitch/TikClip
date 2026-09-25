@@ -25,3 +25,5 @@ services:
         value: '2'
       - key: MAX_VIDEO_SIZE_MB
         value: '50'
+      - key: PUBLIC_URL
+        value: https://tikclip-bot.onrender.com

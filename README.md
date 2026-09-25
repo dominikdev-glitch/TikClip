@@ -51,6 +51,8 @@ GitHub Actions runs the same checks for pushes and pull requests.
 
 The repository includes [render.yaml](render.yaml) for a free Render **Web Service** deployment. The bot keeps Telegram long polling active and exposes a small `/health` endpoint so Render can monitor the process.
 
+The same service also hosts the public TikClip site at `https://tikclip-bot.onrender.com`, including `/privacy` and `/terms` pages for app review.
+
 1. Sign in to [Render](https://dashboard.render.com/).
 2. Select **New**, then **Blueprint**.
 3. Connect `dominikdev-glitch/TikClip` and choose the `main` branch.

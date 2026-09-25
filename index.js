@@ -5,6 +5,7 @@ const config = require('./src/config');
 const { RateLimiter, ConcurrencyLimiter } = require('./src/limiter');
 const { extractTikTokUrl } = require('./src/url-utils');
 const { fetchVideo, getContentLength, getMediaUrl } = require('./src/tikwm');
+const { handleWebRequest } = require('./src/web');
 
 const bot = new Bot(config.botToken);
 const rateLimiter = new RateLimiter({
@@ -30,8 +31,7 @@ const healthServer = http.createServer((request, response) => {
     return;
   }
 
-  response.writeHead(404);
-  response.end();
+  handleWebRequest(request, response);
 });
 
 healthServer.listen(Number(process.env.PORT || 10_000), '0.0.0.0');
