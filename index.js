@@ -4,8 +4,14 @@ const { Bot } = require('grammy');
 const config = require('./src/config');
 const { RateLimiter, ConcurrencyLimiter } = require('./src/limiter');
 const { extractTikTokUrl } = require('./src/url-utils');
-const { fetchVideo, getContentLength, getMediaUrl } = require('./src/tikwm');
+const {
+  downloadVideo,
+  fetchVideo,
+  getContentLength,
+  getMediaUrl,
+} = require('./src/tikwm');
 const { handleWebRequest } = require('./src/web');
+const { createTikTokPublisher } = require('./src/tiktok-publish');
 
 const bot = new Bot(config.botToken);
 const rateLimiter = new RateLimiter({
@@ -17,6 +23,13 @@ const concurrencyLimiter = new ConcurrencyLimiter(
 );
 const activeUrls = new Set();
 const telegramCaptionLimit = 1_024;
+const tikTokPublisher = createTikTokPublisher({
+  clientKey: config.tikTokClientKey,
+  clientSecret: config.tikTokClientSecret,
+  redirectUri: config.tikTokRedirectUri,
+  requestTimeout: config.requestTimeout,
+  maxVideoSizeBytes: config.maxVideoSizeBytes,
+});
 
 const rateLimitCleanup = setInterval(
   () => rateLimiter.cleanup(),
@@ -28,6 +41,50 @@ const healthServer = http.createServer((request, response) => {
   if (request.url === '/health') {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({ status: 'ok' }));
+    return;
+  }
+
+  if (request.url.startsWith('/auth/tiktok/callback')) {
+    const callbackUrl = new URL(request.url, config.publicUrl);
+    const code = callbackUrl.searchParams.get('code');
+    const state = callbackUrl.searchParams.get('state');
+    const error =
+      callbackUrl.searchParams.get('error_description') ||
+      callbackUrl.searchParams.get('error');
+
+    if (error) {
+      response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      response.end(
+        '<h1>TikTok connection cancelled</h1><p>You can close this window and try /connect again in Telegram.</p>',
+      );
+      return;
+    }
+
+    if (!code || !state) {
+      response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      response.end(
+        '<h1>Invalid TikTok callback</h1><p>The authorization response was incomplete.</p>',
+      );
+      return;
+    }
+
+    tikTokPublisher
+      .exchangeCode(code, state)
+      .then(() => {
+        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        response.end(
+          '<h1>TikTok connected</h1><p>You can close this window and use /post followed by a TikTok URL in Telegram.</p>',
+        );
+      })
+      .catch((callbackError) => {
+        log('error', 'TikTok OAuth callback failed', {
+          error: callbackError.message,
+        });
+        response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        response.end(
+          '<h1>TikTok connection failed</h1><p>The authorization could not be completed. Try /connect again.</p>',
+        );
+      });
     return;
   }
 
@@ -129,7 +186,7 @@ bot.command('start', async (ctx) => {
 
 bot.command('help', async (ctx) => {
   await ctx.reply(
-    'Send a TikTok video URL and I will fetch the highest-quality watermark-free version available.\n\nSupported links: tiktok.com, vm.tiktok.com, and vt.tiktok.com.\n\nPlease only download content you have permission to use.',
+    'Send a TikTok video URL and I will fetch the highest-quality watermark-free version available.\n\nSupported links: tiktok.com, vm.tiktok.com, and vt.tiktok.com.\n\nUse /connect to authorize TikTok posting, then /post followed by a TikTok URL.\n\nPlease only download content you have permission to use.',
   );
 });
 
@@ -143,6 +200,62 @@ bot.command('privacy', async (ctx) => {
   await ctx.reply(
     'The bot processes your message only to retrieve the requested video. It does not intentionally store your messages, links, or downloaded media.',
   );
+});
+
+bot.command('connect', async (ctx) => {
+  try {
+    await ctx.reply(
+      `Connect TikTok for posting:\n\n${tikTokPublisher.getAuthorizationUrl(ctx.from.id)}`,
+    );
+  } catch (error) {
+    await ctx.reply(
+      'TikTok posting is not configured yet. Please try again after the administrator adds the TikTok credentials.',
+    );
+    log('error', 'Could not create TikTok authorization URL', {
+      error: error.message,
+    });
+  }
+});
+
+bot.command('post', async (ctx) => {
+  const tikTokUrl = extractTikTokUrl(ctx.match || '');
+  if (!tikTokUrl) {
+    await ctx.reply('Usage: /post https://www.tiktok.com/@creator/video/123');
+    return;
+  }
+
+  const statusMessage = await ctx.reply(
+    '⏳ Downloading the video and preparing your TikTok post...',
+  );
+  try {
+    const video = await fetchVideo(tikTokUrl, config);
+    const videoUrl = getMediaUrl(video);
+    const videoBuffer = await downloadVideo(videoUrl, config);
+    const publishId = await tikTokPublisher.publishVideo(
+      ctx.from.id,
+      videoBuffer,
+      String(video.title || 'TikClip video'),
+    );
+    const status = await tikTokPublisher.getPublishStatus(
+      ctx.from.id,
+      publishId,
+    );
+    await ctx.api.editMessageText(
+      ctx.chat.id,
+      statusMessage.message_id,
+      `TikTok upload started.\nStatus: ${status}\nPublish ID: ${publishId}`,
+    );
+  } catch (error) {
+    log('error', 'TikTok publish failed', {
+      userId: ctx.from.id,
+      error: error.message,
+    });
+    await updateStatusWithError(
+      ctx,
+      statusMessage,
+      `TikTok posting failed: ${error.message}`,
+    );
+  }
 });
 
 bot.on('message:text', async (ctx) => {

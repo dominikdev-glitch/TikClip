@@ -33,6 +33,8 @@ Send `/start` to the bot, then send a TikTok video URL.
 
 Use `/help`, `/about`, or `/privacy` in Telegram. The bot accepts standard `tiktok.com` URLs and `vm.tiktok.com` or `vt.tiktok.com` shortlinks.
 
+To publish an authorized video to TikTok, use `/connect` and complete TikTok authorization in your browser. Then send `/post` followed by a TikTok URL. TikTok must approve the `video.publish` scope for the app; unaudited apps may be limited to private posts. TikTok access tokens are currently held in memory, so users must reconnect after a service restart.
+
 The bot limits each user to five requests per minute, processes up to two downloads concurrently, retries temporary TikWM failures, rejects media larger than Telegram’s configured limit, and avoids duplicate requests in the same chat.
 
 ## Development Checks
@@ -51,14 +53,15 @@ GitHub Actions runs the same checks for pushes and pull requests.
 
 The repository includes [render.yaml](render.yaml) for a free Render **Web Service** deployment. The bot keeps Telegram long polling active and exposes a small `/health` endpoint so Render can monitor the process.
 
-The same service also hosts the public TikClip site at `https://tikclip-bot.onrender.com`, including `/privacy` and `/terms` pages for app review.
+The same service also hosts the public TikClip site at `https://tikclip-bot.onrender.com`, including `/privacy` and `/terms` pages for app review. Set the TikTok Developer Portal OAuth redirect URI to `https://tikclip-bot.onrender.com/auth/tiktok/callback`.
 
 1. Sign in to [Render](https://dashboard.render.com/).
 2. Select **New**, then **Blueprint**.
 3. Connect `dominikdev-glitch/TikClip` and choose the `main` branch.
 4. Review the `tikclip-bot` Web Service and create the Blueprint.
 5. Enter your Telegram BotFather token when Render prompts for the secret `TELEGRAM_BOT_TOKEN`.
-6. Open the worker logs and confirm that it reports `Bot started`.
+6. Enter the TikTok `TIKTOK_CLIENT_KEY` and regenerated `TIKTOK_CLIENT_SECRET` secrets.
+7. Open the service logs and confirm that it reports `Bot started`.
 
 The Blueprint enables automatic deploys for new commits. Only run one Render service for this bot token, because multiple long-polling processes compete for Telegram updates. Render’s free Web Services can spin down after inactivity, so the bot may need a short wake-up period before responding. A paid instance avoids that sleep behavior.
 

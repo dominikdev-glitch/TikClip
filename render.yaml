@@ -27,3 +27,9 @@ services:
         value: '50'
       - key: PUBLIC_URL
         value: https://tikclip-bot.onrender.com
+      - key: TIKTOK_CLIENT_KEY
+        sync: false
+      - key: TIKTOK_CLIENT_SECRET
+        sync: false
+      - key: TIKTOK_REDIRECT_URI
+        value: https://tikclip-bot.onrender.com/auth/tiktok/callback

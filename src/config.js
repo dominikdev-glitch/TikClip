@@ -27,4 +27,10 @@ module.exports = {
   rateLimitMaxRequests: getPositiveInteger('RATE_LIMIT_MAX_REQUESTS', 5),
   maxConcurrentDownloads: getPositiveInteger('MAX_CONCURRENT_DOWNLOADS', 2),
   maxVideoSizeBytes: getPositiveInteger('MAX_VIDEO_SIZE_MB', 50) * 1024 * 1024,
+  publicUrl: process.env.PUBLIC_URL || 'https://tikclip-bot.onrender.com',
+  tikTokClientKey: process.env.TIKTOK_CLIENT_KEY || '',
+  tikTokClientSecret: process.env.TIKTOK_CLIENT_SECRET || '',
+  tikTokRedirectUri:
+    process.env.TIKTOK_REDIRECT_URI ||
+    'https://tikclip-bot.onrender.com/auth/tiktok/callback',
 };

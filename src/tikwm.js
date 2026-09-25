@@ -72,4 +72,15 @@ async function getContentLength(videoUrl, requestTimeout) {
   }
 }
 
-module.exports = { fetchVideo, getContentLength, getMediaUrl };
+async function downloadVideo(videoUrl, options) {
+  const response = await axios.get(videoUrl, {
+    responseType: 'arraybuffer',
+    timeout: options.requestTimeout,
+    maxContentLength: options.maxVideoSizeBytes,
+    maxBodyLength: options.maxVideoSizeBytes,
+    validateStatus: (status) => status >= 200 && status < 300,
+  });
+  return Buffer.from(response.data);
+}
+
+module.exports = { downloadVideo, fetchVideo, getContentLength, getMediaUrl };
