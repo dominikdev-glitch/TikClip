@@ -6,5 +6,6 @@ client_secret*.json
 __pycache__/
 *.py[cod]
 llm/*.pt
+!llm/tiny_transformer.pt
 data/chatbot-memory.json
 test/.chatbot-memory-*.json

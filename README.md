@@ -30,13 +30,11 @@ A Telegram bot that accepts TikTok links and sends back high-quality videos with
    npm start
    ```
 
-Send `/start` and enter your `BOT_LOGIN_PIN`. Then connect TikTok or YouTube, or tap **Nevermind** to open the usual bot menu. PIN attempts are rate-limited. Set the same variable in Render's environment for deployed use.
+Send `/start` and enter your `BOT_LOGIN_PIN`. Then connect YouTube or tap **Nevermind** to open the usual bot menu. PIN attempts are rate-limited. Set the same variable in Render's environment for deployed use.
 
-Use the inline buttons after `/start`; `/menu` opens them again. The bot accepts standard `tiktok.com` URLs and `vm.tiktok.com` or `vt.tiktok.com` shortlinks. Slash commands such as `/connect`, `/post`, and `/connect-youtube` remain available as fallbacks.
+Use the inline buttons after `/start`; `/menu` opens them again. TikTok links remain the source for downloads and YouTube uploads. Publishing is YouTube-only: connect YouTube, then use **Upload to YouTube**. `/connect-youtube` remains available as a command fallback.
 
-To publish an authorized video to TikTok, use `/connect` and complete TikTok authorization in your browser. Then send `/post` followed by a TikTok URL. TikTok must approve the `video.publish` scope for the app; unaudited apps may be limited to private posts. TikTok access tokens are currently held in memory, so users must reconnect after a service restart.
-
-To upload a downloaded video to YouTube, use the **Connect YouTube** button and complete Google OAuth, then use **Upload to YouTube** and send a TikTok link. YouTube uploads are created as private videos by default. Create OAuth credentials for a Web application in Google Cloud Console and enable YouTube Data API v3. Locally, put Google's downloaded OAuth client JSON in the workspace root as `secret.json`; the bot reads `web` or `installed` credentials and supports flat `client_id`/`client_secret` fields. Environment variables override file values. Register `https://tikclip-bot.onrender.com/auth/youtube/callback` as an authorized redirect URI. On Render, paste the full downloaded JSON into the secret `YOUTUBE_CLIENT_JSON` environment variable, or use `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` separately.
+To upload a downloaded video to YouTube, use the **Connect YouTube** button and complete Google OAuth, then use **Upload to YouTube** and send a TikTok link. YouTube uploads are created as private videos by default. Create OAuth credentials for a Web application in Google Cloud Console and enable YouTube Data API v3. For Render, use a Web application client JSON with a top-level `web` object (not an `installed` client) and register `https://tikclip-bot.onrender.com/auth/youtube/callback` as an authorized redirect URI. Locally, put Google's downloaded OAuth client JSON in the workspace root as `secret.json`; the bot reads `web` or `installed` credentials and supports flat `client_id`/`client_secret` fields. Environment variables override file values. On Render, paste the full downloaded JSON into the secret `YOUTUBE_CLIENT_JSON` environment variable, or use `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` separately.
 
 The bot limits each user to five requests per minute, processes up to two downloads concurrently, retries temporary TikWM failures, rejects media larger than Telegram’s configured limit, and avoids duplicate requests in the same chat.
 
@@ -64,21 +62,21 @@ py -3.11 -m venv .venv
 .venv\Scripts\python.exe llm\tiny_transformer.py --train
 ```
 
-The Node bot detects the local checkpoint and starts one persistent inference worker automatically. Set `TINY_LLM_PYTHON` if Python is not at `.venv`. Without a usable Python environment or trained checkpoint, the bot continues using its existing memory-based fallback. The Render blueprint is Node-only, so the transformer is not enabled there by default.
+The bot detects the checkpoint and starts one persistent inference worker automatically. Set `TINY_LLM_PYTHON` if Python is not at `.venv`. The Docker image installs CPU-only PyTorch and includes the trained checkpoint, so the Render deployment can answer with the transformer instead of falling back to the teach-me response. If Python or the checkpoint is unavailable, the bot uses its memory-based fallback.
 
 ## Render Deployment
 
 The repository includes [render.yaml](render.yaml) for a free Render **Web Service** deployment. The bot keeps Telegram long polling active and exposes a small `/health` endpoint so Render can monitor the process.
 
-The same service also hosts the public TikClip site at `https://tikclip-bot.onrender.com`, including `/privacy` and `/terms` pages for app review. Set the TikTok Developer Portal OAuth redirect URI to `https://tikclip-bot.onrender.com/auth/tiktok/callback`.
+The same service also hosts the public TikClip site at `https://tikclip-bot.onrender.com`, including `/privacy` and `/terms` pages.
 
 1. Sign in to [Render](https://dashboard.render.com/).
 2. Select **New**, then **Blueprint**.
 3. Connect `dominikdev-glitch/TikClip` and choose the `main` branch.
 4. Review the `tikclip-bot` Web Service and create the Blueprint.
 5. Enter your Telegram BotFather token when Render prompts for the secret `TELEGRAM_BOT_TOKEN`.
-6. Enter the TikTok `TIKTOK_CLIENT_KEY` and regenerated `TIKTOK_CLIENT_SECRET` secrets.
-7. Enter the YouTube `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` secrets after enabling YouTube Data API v3 in Google Cloud.
+6. Enter the YouTube OAuth JSON in `YOUTUBE_CLIENT_JSON`, or enter `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET`, after enabling YouTube Data API v3 in Google Cloud.
+7. Confirm `BOT_LOGIN_PIN` is set in the service environment.
 8. Open the service logs and confirm that it reports `Bot started`.
 
 The Blueprint enables automatic deploys for new commits. Only run one Render service for this bot token, because multiple long-polling processes compete for Telegram updates. Render’s free Web Services can spin down after inactivity, so the bot may need a short wake-up period before responding. A paid instance avoids that sleep behavior.
@@ -91,13 +89,14 @@ Build the image:
 docker build -t tik-telegram-bot .
 ```
 
-Run one bot instance with the token supplied at runtime:
+Run one bot instance with credentials supplied at runtime:
 
 ```bash
 docker run -d \
    --name tik-telegram-bot \
    --restart unless-stopped \
    --env TELEGRAM_BOT_TOKEN=your_bot_token_here \
+   --env BOT_LOGIN_PIN=your_private_pin \
    tik-telegram-bot
 ```
 

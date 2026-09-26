@@ -11,7 +11,6 @@ const {
   getMediaUrl,
 } = require('./src/tikwm');
 const { handleWebRequest } = require('./src/web');
-const { createTikTokPublisher } = require('./src/tiktok-publish');
 const { createYouTubePublisher } = require('./src/youtube-publish');
 const {
   menuKeyboard,
@@ -41,13 +40,6 @@ const loginPinLimiter = new RateLimiter({
   windowMs: config.rateLimitWindow,
   maxRequests: config.rateLimitMaxRequests,
 });
-const tikTokPublisher = createTikTokPublisher({
-  clientKey: config.tikTokClientKey,
-  clientSecret: config.tikTokClientSecret,
-  redirectUri: config.tikTokRedirectUri,
-  requestTimeout: config.requestTimeout,
-  maxVideoSizeBytes: config.maxVideoSizeBytes,
-});
 const youtubePublisher = createYouTubePublisher({
   clientId: config.youtubeClientId,
   clientSecret: config.youtubeClientSecret,
@@ -71,50 +63,6 @@ const healthServer = http.createServer((request, response) => {
   if (request.url === '/health') {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({ status: 'ok' }));
-    return;
-  }
-
-  if (request.url.startsWith('/auth/tiktok/callback')) {
-    const callbackUrl = new URL(request.url, config.publicUrl);
-    const code = callbackUrl.searchParams.get('code');
-    const state = callbackUrl.searchParams.get('state');
-    const error =
-      callbackUrl.searchParams.get('error_description') ||
-      callbackUrl.searchParams.get('error');
-
-    if (error) {
-      response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-      response.end(
-        '<h1>TikTok connection cancelled</h1><p>You can close this window and try /connect again in Telegram.</p>',
-      );
-      return;
-    }
-
-    if (!code || !state) {
-      response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-      response.end(
-        '<h1>Invalid TikTok callback</h1><p>The authorization response was incomplete.</p>',
-      );
-      return;
-    }
-
-    tikTokPublisher
-      .exchangeCode(code, state)
-      .then(() => {
-        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        response.end(
-          '<h1>TikTok connected</h1><p>You can close this window and use /post followed by a TikTok URL in Telegram.</p>',
-        );
-      })
-      .catch((callbackError) => {
-        log('error', 'TikTok OAuth callback failed', {
-          error: callbackError.message,
-        });
-        response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-        response.end(
-          '<h1>TikTok connection failed</h1><p>The authorization could not be completed. Try /connect again.</p>',
-        );
-      });
     return;
   }
 
@@ -225,7 +173,6 @@ bot.use(async (ctx, next) => {
 
   if (onboardingUsers.has(userKey)) {
     const allowedActions = new Set([
-      'action:connect-tiktok',
       'action:connect-youtube',
       'action:onboarding-skip',
     ]);
@@ -293,38 +240,6 @@ async function handleTikTokMessage(ctx, tikTokUrl) {
   }
 }
 
-async function handleTikTokPost(ctx, tikTokUrl) {
-  const statusMessage = await ctx.reply('⏳ Preparing your TikTok post...');
-  try {
-    const video = await fetchVideo(tikTokUrl, config);
-    const videoBuffer = await downloadVideo(getMediaUrl(video), config);
-    const publishId = await tikTokPublisher.publishVideo(
-      ctx.from.id,
-      videoBuffer,
-      String(video.title || 'TikClip video'),
-    );
-    const status = await tikTokPublisher.getPublishStatus(
-      ctx.from.id,
-      publishId,
-    );
-    await ctx.api.editMessageText(
-      ctx.chat.id,
-      statusMessage.message_id,
-      `TikTok upload started.\nStatus: ${status}`,
-    );
-  } catch (error) {
-    log('error', 'TikTok publish failed', {
-      userId: ctx.from.id,
-      error: error.message,
-    });
-    await updateStatusWithError(
-      ctx,
-      statusMessage,
-      `TikTok posting failed: ${error.message}`,
-    );
-  }
-}
-
 async function handleYouTubePost(ctx, tikTokUrl) {
   const statusMessage = await ctx.reply(
     '⏳ Preparing your private YouTube upload...',
@@ -373,7 +288,7 @@ bot.command('start', async (ctx) => {
 
 bot.command('help', async (ctx) => {
   await ctx.reply(
-    'Send a TikTok video URL and I will fetch the highest-quality watermark-free version available.\n\nSupported links: tiktok.com, vm.tiktok.com, and vt.tiktok.com.\n\nUse /connect to authorize TikTok posting, then /post followed by a TikTok URL.\n\nPlease only download content you have permission to use.',
+    'Send a TikTok video URL to download it, or connect YouTube and choose Upload to YouTube to publish it privately.\n\nSupported links: tiktok.com, vm.tiktok.com, and vt.tiktok.com.\n\nPlease only download content you have permission to use.',
     { reply_markup: menuKeyboard() },
   );
 });
@@ -394,24 +309,6 @@ bot.command('privacy', async (ctx) => {
   );
 });
 
-bot.command('connect', async (ctx) => {
-  try {
-    await ctx.reply('Connect TikTok for posting:', {
-      reply_markup: new InlineKeyboard().url(
-        'Authorize TikTok',
-        tikTokPublisher.getAuthorizationUrl(ctx.from.id),
-      ),
-    });
-  } catch (error) {
-    await ctx.reply(
-      'TikTok posting is not configured yet. Please try again after the administrator adds the TikTok credentials.',
-    );
-    log('error', 'Could not create TikTok authorization URL', {
-      error: error.message,
-    });
-  }
-});
-
 bot.command('connect-youtube', async (ctx) => {
   try {
     await ctx.reply('Connect YouTube for uploads:', {
@@ -425,47 +322,6 @@ bot.command('connect-youtube', async (ctx) => {
     log('error', 'Could not create YouTube authorization URL', {
       error: error.message,
     });
-  }
-});
-
-bot.command('post', async (ctx) => {
-  const tikTokUrl = extractTikTokUrl(ctx.match || '');
-  if (!tikTokUrl) {
-    await ctx.reply('Usage: /post https://www.tiktok.com/@creator/video/123');
-    return;
-  }
-
-  const statusMessage = await ctx.reply(
-    '⏳ Downloading the video and preparing your TikTok post...',
-  );
-  try {
-    const video = await fetchVideo(tikTokUrl, config);
-    const videoUrl = getMediaUrl(video);
-    const videoBuffer = await downloadVideo(videoUrl, config);
-    const publishId = await tikTokPublisher.publishVideo(
-      ctx.from.id,
-      videoBuffer,
-      String(video.title || 'TikClip video'),
-    );
-    const status = await tikTokPublisher.getPublishStatus(
-      ctx.from.id,
-      publishId,
-    );
-    await ctx.api.editMessageText(
-      ctx.chat.id,
-      statusMessage.message_id,
-      `TikTok upload started.\nStatus: ${status}\nPublish ID: ${publishId}`,
-    );
-  } catch (error) {
-    log('error', 'TikTok publish failed', {
-      userId: ctx.from.id,
-      error: error.message,
-    });
-    await updateStatusWithError(
-      ctx,
-      statusMessage,
-      `TikTok posting failed: ${error.message}`,
-    );
   }
 });
 
@@ -490,23 +346,6 @@ bot.on('callback_query:data', async (ctx) => {
     return;
   }
 
-  if (onboardingUsers.has(String(ctx.from.id)) && action === 'connect-tiktok') {
-    try {
-      await ctx.reply('Connect TikTok for posting:', {
-        reply_markup: new InlineKeyboard().url(
-          'Authorize TikTok',
-          tikTokPublisher.getAuthorizationUrl(ctx.from.id),
-        ),
-      });
-    } catch (error) {
-      await ctx.reply('TikTok posting is not configured yet.');
-      log('error', 'Could not create TikTok authorization URL', {
-        error: error.message,
-      });
-    }
-    return;
-  }
-
   if (onboardingUsers.has(String(ctx.from.id)) && action === 'connect-youtube') {
     try {
       await ctx.reply('Connect YouTube for uploads:', {
@@ -528,7 +367,7 @@ bot.on('callback_query:data', async (ctx) => {
 
   if (action === 'help') {
     await ctx.reply(
-      'Tap Download video to retrieve a clip. Connect a platform once, then tap its upload button and send a TikTok link.',
+      'Send a TikTok link to download it. Connect YouTube once, then tap Upload to YouTube and send a TikTok link to publish it privately.',
     );
     return;
   }
@@ -536,23 +375,6 @@ bot.on('callback_query:data', async (ctx) => {
   if (action === 'download') {
     pendingActions.set(String(ctx.from.id), 'download');
     await ctx.reply('Send the TikTok link you want to download.');
-    return;
-  }
-
-  if (action === 'connect-tiktok') {
-    try {
-      await ctx.reply('Connect TikTok for posting:', {
-        reply_markup: new InlineKeyboard().url(
-          'Authorize TikTok',
-          tikTokPublisher.getAuthorizationUrl(ctx.from.id),
-        ),
-      });
-    } catch (error) {
-      await ctx.reply('TikTok posting is not configured yet.');
-      log('error', 'Could not create TikTok authorization URL', {
-        error: error.message,
-      });
-    }
     return;
   }
 
@@ -573,13 +395,9 @@ bot.on('callback_query:data', async (ctx) => {
     return;
   }
 
-  if (action === 'post-tiktok' || action === 'post-youtube') {
+  if (action === 'post-youtube') {
     pendingActions.set(String(ctx.from.id), action);
-    await ctx.reply(
-      action === 'post-tiktok'
-        ? 'Send the TikTok link to publish on TikTok.'
-        : 'Send the TikTok link to upload privately to YouTube.',
-    );
+    await ctx.reply('Send the TikTok link to upload privately to YouTube.');
   }
 });
 
@@ -604,7 +422,7 @@ bot.on('message:text', async (ctx) => {
     awaitingLoginPin.delete(userKey);
     authenticatedUsers.add(userKey);
     onboardingUsers.add(userKey);
-    await ctx.reply('PIN accepted. Connect an account now, or choose Nevermind.', {
+    await ctx.reply('PIN accepted. Connect YouTube now, or choose Nevermind.', {
       reply_markup: onboardingKeyboard(),
     });
     return;
@@ -615,7 +433,6 @@ bot.on('message:text', async (ctx) => {
 
     const action = pendingActions.get(String(ctx.from.id)) || 'download';
     pendingActions.delete(String(ctx.from.id));
-    if (action === 'post-tiktok') return handleTikTokPost(ctx, tikTokUrl);
     if (action === 'post-youtube') return handleYouTubePost(ctx, tikTokUrl);
     return handleTikTokMessage(ctx, tikTokUrl);
   }

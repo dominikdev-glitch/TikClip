@@ -32,11 +32,6 @@ module.exports = {
   maxConcurrentDownloads: getPositiveInteger('MAX_CONCURRENT_DOWNLOADS', 2),
   maxVideoSizeBytes: getPositiveInteger('MAX_VIDEO_SIZE_MB', 50) * 1024 * 1024,
   publicUrl: process.env.PUBLIC_URL || 'https://tikclip-bot.onrender.com',
-  tikTokClientKey: process.env.TIKTOK_CLIENT_KEY || '',
-  tikTokClientSecret: process.env.TIKTOK_CLIENT_SECRET || '',
-  tikTokRedirectUri:
-    process.env.TIKTOK_REDIRECT_URI ||
-    'https://tikclip-bot.onrender.com/auth/tiktok/callback',
   youtubeClientId: youtubeCredentials.clientId,
   youtubeClientSecret: youtubeCredentials.clientSecret,
   youtubeRedirectUri: youtubeCredentials.redirectUri,
