@@ -3,9 +3,22 @@ const crypto = require('node:crypto');
 const { google } = require('googleapis');
 const { Readable } = require('node:stream');
 
+const PRIVACY_STATUSES = new Set(['private', 'unlisted', 'public']);
+
+function getYouTubeCaption(video) {
+  return String(video?.title || '').trim() || 'TikClip video';
+}
+
 function createYouTubePublisher(options) {
   const pendingStates = new Map();
   const clients = new Map();
+  const privacyStatus = options.privacyStatus || 'public';
+
+  if (!PRIVACY_STATUSES.has(privacyStatus)) {
+    throw new Error(
+      'YOUTUBE_PRIVACY_STATUS must be private, unlisted, or public.',
+    );
+  }
 
   function isConfigured() {
     return Boolean(
@@ -88,7 +101,7 @@ function createYouTubePublisher(options) {
           categoryId: '22',
         },
         status: {
-          privacyStatus: 'private',
+          privacyStatus,
           selfDeclaredMadeForKids: false,
         },
       },
@@ -114,8 +127,9 @@ function createYouTubePublisher(options) {
     exchangeCode,
     getAuthorizationUrl,
     isConfigured,
+    privacyStatus,
     uploadVideo,
   };
 }
 
-module.exports = { createYouTubePublisher };
+module.exports = { createYouTubePublisher, getYouTubeCaption };

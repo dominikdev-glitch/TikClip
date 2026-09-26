@@ -1,7 +1,45 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createYouTubePublisher } = require('../src/youtube-publish');
+const {
+  createYouTubePublisher,
+  getYouTubeCaption,
+} = require('../src/youtube-publish');
+
+test('defaults YouTube uploads to public visibility', () => {
+  const publisher = createYouTubePublisher({
+    clientId: 'client-id',
+    clientSecret: 'client-secret',
+    redirectUri: 'https://example.com/auth/youtube/callback',
+  });
+
+  assert.equal(publisher.privacyStatus, 'public');
+});
+
+test('accepts private and unlisted visibility overrides', () => {
+  for (const privacyStatus of ['private', 'unlisted']) {
+    const publisher = createYouTubePublisher({
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      redirectUri: 'https://example.com/auth/youtube/callback',
+      privacyStatus,
+    });
+    assert.equal(publisher.privacyStatus, privacyStatus);
+  }
+});
+
+test('rejects unsupported YouTube privacy settings', () => {
+  assert.throws(
+    () => createYouTubePublisher({ privacyStatus: 'friends-only' }),
+    /YOUTUBE_PRIVACY_STATUS/,
+  );
+});
+
+test('keeps the TikTok caption and hashtags intact', () => {
+  const caption = 'New clip #music #dance';
+  assert.equal(getYouTubeCaption({ title: caption }), caption);
+  assert.equal(getYouTubeCaption({ title: '  ' }), 'TikClip video');
+});
 
 test('creates a YouTube OAuth URL with upload scope and state', () => {
   const publisher = createYouTubePublisher({

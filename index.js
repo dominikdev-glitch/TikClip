@@ -11,7 +11,10 @@ const {
   getMediaUrl,
 } = require('./src/tikwm');
 const { handleWebRequest } = require('./src/web');
-const { createYouTubePublisher } = require('./src/youtube-publish');
+const {
+  createYouTubePublisher,
+  getYouTubeCaption,
+} = require('./src/youtube-publish');
 const {
   menuKeyboard,
   onboardingKeyboard,
@@ -44,18 +47,22 @@ const youtubePublisher = createYouTubePublisher({
   clientId: config.youtubeClientId,
   clientSecret: config.youtubeClientSecret,
   redirectUri: config.youtubeRedirectUri,
+  privacyStatus: config.youtubePrivacyStatus,
   requestTimeout: config.requestTimeout,
 });
 const localChatbot = createLocalChatbot({
   memoryFile: './data/chatbot-memory.json',
 });
 const tinyTransformer = createTinyTransformerClient({
-  onError: (error) => log('warn', 'Tiny transformer unavailable', { error: error.message }),
+  onError: (error) =>
+    log('warn', 'Tiny transformer unavailable', { error: error.message }),
 });
 tinyTransformer.reply('hello').then((reply) => {
   log(
     reply ? 'log' : 'warn',
-    reply ? 'Tiny transformer ready' : 'Tiny transformer unavailable; chatbot fallback is active',
+    reply
+      ? 'Tiny transformer ready'
+      : 'Tiny transformer unavailable; chatbot fallback is active',
   );
 });
 
@@ -170,7 +177,11 @@ bot.use(async (ctx, next) => {
   if (/^\/start(?:@\w+)?(?:\s|$)/i.test(messageText)) return next();
 
   if (!authenticatedUsers.has(userKey)) {
-    if (awaitingLoginPin.has(userKey) && messageText && !messageText.startsWith('/')) {
+    if (
+      awaitingLoginPin.has(userKey) &&
+      messageText &&
+      !messageText.startsWith('/')
+    ) {
       return next();
     }
     await ctx.reply('Please use /start and enter the access PIN to continue.');
@@ -183,7 +194,9 @@ bot.use(async (ctx, next) => {
       'action:onboarding-skip',
     ]);
     if (allowedActions.has(ctx.callbackQuery?.data)) return next();
-    await ctx.reply('Choose a platform to connect, or tap Nevermind to continue.');
+    await ctx.reply(
+      'Choose a platform to connect, or tap Nevermind to continue.',
+    );
     return;
   }
 
@@ -253,16 +266,17 @@ async function handleYouTubePost(ctx, tikTokUrl) {
   try {
     const video = await fetchVideo(tikTokUrl, config);
     const videoBuffer = await downloadVideo(getMediaUrl(video), config);
+    const sourceCaption = getYouTubeCaption(video);
     const videoId = await youtubePublisher.uploadVideo(
       ctx.from.id,
       videoBuffer,
-      String(video.title || 'TikClip video'),
-      `Downloaded with TikClip. Original creator: ${video.author?.nickname || 'Unknown'}`,
+      sourceCaption,
+      sourceCaption,
     );
     await ctx.api.editMessageText(
       ctx.chat.id,
       statusMessage.message_id,
-      `YouTube upload complete and set to private.\nhttps://youtu.be/${videoId}`,
+      `YouTube upload complete and set to ${youtubePublisher.privacyStatus}.\nhttps://youtu.be/${videoId}`,
     );
   } catch (error) {
     log('error', 'YouTube upload failed', {
@@ -284,7 +298,9 @@ bot.command('start', async (ctx) => {
 
   if (!config.loginPin) {
     awaitingLoginPin.delete(userKey);
-    await ctx.reply('Bot login is not configured. Set BOT_LOGIN_PIN in the environment.');
+    await ctx.reply(
+      'Bot login is not configured. Set BOT_LOGIN_PIN in the environment.',
+    );
     return;
   }
 
@@ -294,7 +310,7 @@ bot.command('start', async (ctx) => {
 
 bot.command('help', async (ctx) => {
   await ctx.reply(
-    'Send a TikTok video URL to download it, or connect YouTube and choose Upload to YouTube to publish it privately.\n\nSupported links: tiktok.com, vm.tiktok.com, and vt.tiktok.com.\n\nPlease only download content you have permission to use.',
+    'Send a TikTok video URL to download it, or connect YouTube and choose Upload to YouTube.\n\nSupported links: tiktok.com, vm.tiktok.com, and vt.tiktok.com.\n\nPlease only download content you have permission to use.',
     { reply_markup: menuKeyboard() },
   );
 });
@@ -354,7 +370,10 @@ bot.on('callback_query:data', async (ctx) => {
 
   await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
 
-  if (onboardingUsers.has(String(ctx.from.id)) && action === 'connect-youtube') {
+  if (
+    onboardingUsers.has(String(ctx.from.id)) &&
+    action === 'connect-youtube'
+  ) {
     onboardingUsers.delete(String(ctx.from.id));
     try {
       await ctx.reply('Connect YouTube for uploads:', {
@@ -376,7 +395,7 @@ bot.on('callback_query:data', async (ctx) => {
 
   if (action === 'help') {
     await ctx.reply(
-      'Send a TikTok link to download it. Connect YouTube once, then tap Upload to YouTube and send a TikTok link to publish it privately.',
+      'Send a TikTok link to download it. Connect YouTube once, then tap Upload to YouTube and send a TikTok link to publish it.',
     );
     return;
   }
@@ -406,7 +425,7 @@ bot.on('callback_query:data', async (ctx) => {
 
   if (action === 'post-youtube') {
     pendingActions.set(String(ctx.from.id), action);
-    await ctx.reply('Send the TikTok link to upload privately to YouTube.');
+    await ctx.reply('Send the TikTok link to upload to YouTube.');
   }
 });
 
@@ -419,7 +438,9 @@ bot.on('message:text', async (ctx) => {
 
   if (awaitingLoginPin.has(userKey)) {
     if (!loginPinLimiter.allow(userKey)) {
-      await ctx.reply('Too many PIN attempts. Please wait a minute and try again.');
+      await ctx.reply(
+        'Too many PIN attempts. Please wait a minute and try again.',
+      );
       return;
     }
 

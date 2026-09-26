@@ -35,4 +35,5 @@ module.exports = {
   youtubeClientId: youtubeCredentials.clientId,
   youtubeClientSecret: youtubeCredentials.clientSecret,
   youtubeRedirectUri: youtubeCredentials.redirectUri,
+  youtubePrivacyStatus: process.env.YOUTUBE_PRIVACY_STATUS || 'public',
 };
