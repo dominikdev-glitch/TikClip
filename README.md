@@ -31,9 +31,11 @@ A Telegram bot that accepts TikTok links and sends back high-quality videos with
 
 Send `/start` to the bot, then send a TikTok video URL.
 
-Use `/help`, `/about`, or `/privacy` in Telegram. The bot accepts standard `tiktok.com` URLs and `vm.tiktok.com` or `vt.tiktok.com` shortlinks.
+Use the inline buttons after `/start`; `/menu` opens them again. The bot accepts standard `tiktok.com` URLs and `vm.tiktok.com` or `vt.tiktok.com` shortlinks. Slash commands such as `/connect`, `/post`, and `/connect-youtube` remain available as fallbacks.
 
 To publish an authorized video to TikTok, use `/connect` and complete TikTok authorization in your browser. Then send `/post` followed by a TikTok URL. TikTok must approve the `video.publish` scope for the app; unaudited apps may be limited to private posts. TikTok access tokens are currently held in memory, so users must reconnect after a service restart.
+
+To upload a downloaded video to YouTube, use the **Connect YouTube** button and complete Google OAuth, then use **Upload to YouTube** and send a TikTok link. YouTube uploads are created as private videos by default. Create OAuth credentials in Google Cloud Console, enable the YouTube Data API v3, and register `https://tikclip-bot.onrender.com/auth/youtube/callback` as an authorized redirect URI. Add `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` to Render.
 
 The bot limits each user to five requests per minute, processes up to two downloads concurrently, retries temporary TikWM failures, rejects media larger than Telegram’s configured limit, and avoids duplicate requests in the same chat.
 
@@ -61,7 +63,8 @@ The same service also hosts the public TikClip site at `https://tikclip-bot.onre
 4. Review the `tikclip-bot` Web Service and create the Blueprint.
 5. Enter your Telegram BotFather token when Render prompts for the secret `TELEGRAM_BOT_TOKEN`.
 6. Enter the TikTok `TIKTOK_CLIENT_KEY` and regenerated `TIKTOK_CLIENT_SECRET` secrets.
-7. Open the service logs and confirm that it reports `Bot started`.
+7. Enter the YouTube `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` secrets after enabling YouTube Data API v3 in Google Cloud.
+8. Open the service logs and confirm that it reports `Bot started`.
 
 The Blueprint enables automatic deploys for new commits. Only run one Render service for this bot token, because multiple long-polling processes compete for Telegram updates. Render’s free Web Services can spin down after inactivity, so the bot may need a short wake-up period before responding. A paid instance avoids that sleep behavior.
 

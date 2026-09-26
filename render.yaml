@@ -33,3 +33,9 @@ services:
         sync: false
       - key: TIKTOK_REDIRECT_URI
         value: https://tikclip-bot.onrender.com/auth/tiktok/callback
+      - key: YOUTUBE_CLIENT_ID
+        sync: false
+      - key: YOUTUBE_CLIENT_SECRET
+        sync: false
+      - key: YOUTUBE_REDIRECT_URI
+        value: https://tikclip-bot.onrender.com/auth/youtube/callback

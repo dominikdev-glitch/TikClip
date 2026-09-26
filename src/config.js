@@ -33,4 +33,9 @@ module.exports = {
   tikTokRedirectUri:
     process.env.TIKTOK_REDIRECT_URI ||
     'https://tikclip-bot.onrender.com/auth/tiktok/callback',
+  youtubeClientId: process.env.YOUTUBE_CLIENT_ID || '',
+  youtubeClientSecret: process.env.YOUTUBE_CLIENT_SECRET || '',
+  youtubeRedirectUri:
+    process.env.YOUTUBE_REDIRECT_URI ||
+    'https://tikclip-bot.onrender.com/auth/youtube/callback',
 };
