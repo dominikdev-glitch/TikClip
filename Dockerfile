@@ -20,6 +20,7 @@ COPY index.js ./
 COPY src ./src
 COPY llm/tiny_transformer.py ./llm/tiny_transformer.py
 COPY llm/tiny_transformer.pt ./llm/tiny_transformer.pt
+RUN mkdir -p /app/data && chown node:node /app/data
 
 ENV NODE_ENV=production
 ENV TINY_LLM_PYTHON=/opt/venv/bin/python
