@@ -13,7 +13,7 @@ EMBEDDING_SIZE = 64
 HEADS = 4
 LAYERS = 2
 DEFAULT_MODEL_PATH = Path(__file__).with_name('tiny_transformer.pt')
-TOKEN_PATTERN = re.compile(r"\n|[a-z0-9]+(?:'[a-z]+)?|[^\w\s]", re.IGNORECASE)
+TOKEN_PATTERN = re.compile(r"<[^>]+>|\n|[a-z0-9]+(?:'[a-z]+)?|[^\w\s]", re.IGNORECASE)
 
 
 class TinyTransformerLM(nn.Module):
@@ -91,22 +91,38 @@ def tokenize(text):
 def train(model_path=DEFAULT_MODEL_PATH, steps=1000, seed=17):
     random.seed(seed)
     torch.manual_seed(seed)
-    text = make_training_text(build_demo_training_data())
-    vocabulary = sorted(set(tokenize(text)))
-    vocabulary.append('<unk>')
+    examples = build_demo_training_data()
+    sequences = [
+        ['<bos>'] + tokenize(f'User: {question}\nBot: {answer}\n') + ['<eos>']
+        for question, answer in examples
+    ]
+    vocabulary = sorted({token for sequence in sequences for token in sequence})
+    vocabulary.extend(['<pad>', '<unk>'])
     token_to_id = {token: index for index, token in enumerate(vocabulary)}
-    encoded = torch.tensor([token_to_id[token] for token in tokenize(text)], dtype=torch.long)
+    pad_id = token_to_id['<pad>']
+    encoded = torch.full((len(sequences), BLOCK_SIZE + 1), pad_id, dtype=torch.long)
+    for row, sequence in enumerate(sequences):
+        sequence = sequence[:BLOCK_SIZE + 1]
+        encoded[row, :len(sequence)] = torch.tensor(
+            [token_to_id[token] for token in sequence], dtype=torch.long
+        )
+
     model = TinyTransformerLM(len(vocabulary))
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
     losses = []
     batch_size = 16
 
     for step in range(steps):
-        starts = torch.randint(0, len(encoded) - BLOCK_SIZE - 1, (batch_size,))
-        inputs = torch.stack([encoded[start:start + BLOCK_SIZE] for start in starts])
-        targets = torch.stack([encoded[start + 1:start + BLOCK_SIZE + 1] for start in starts])
+        examples_in_batch = torch.randint(0, len(encoded), (batch_size,))
+        batch = encoded[examples_in_batch]
+        inputs = batch[:, :-1]
+        targets = batch[:, 1:]
         logits = model(inputs)
-        loss = nn.functional.cross_entropy(logits.reshape(-1, len(vocabulary)), targets.reshape(-1))
+        loss = nn.functional.cross_entropy(
+            logits.reshape(-1, len(vocabulary)),
+            targets.reshape(-1),
+            ignore_index=pad_id,
+        )
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -127,6 +143,7 @@ def train(model_path=DEFAULT_MODEL_PATH, steps=1000, seed=17):
 
 
 def load_model(model_path=DEFAULT_MODEL_PATH):
+    torch.set_num_threads(1)
     checkpoint = torch.load(model_path, map_location='cpu', weights_only=True)
     vocabulary = checkpoint['vocabulary']
     model = TinyTransformerLM(len(vocabulary), checkpoint['block_size'])
@@ -138,7 +155,7 @@ def load_model(model_path=DEFAULT_MODEL_PATH):
 @torch.inference_mode()
 def generate_reply(model, token_to_id, vocabulary, prompt, max_new_tokens=200):
     fallback_id = token_to_id['<unk>']
-    prefix = f'User: {prompt}\nBot:'
+    prefix = f'<bos>User: {prompt}\nBot:'
     tokens = [token_to_id.get(token, fallback_id) for token in tokenize(prefix)]
     generated = []
     for _ in range(max_new_tokens):

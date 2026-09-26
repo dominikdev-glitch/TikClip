@@ -52,7 +52,7 @@ GitHub Actions runs the same checks for pushes and pull requests.
 
 ## Optional Local Transformer
 
-The bot can use a small, local PyTorch transformer to answer chat messages that do not match a learned reply. The included model has 83,840 parameters and is trained only on the bot-focused example dialogue; it is experimental, not a general-purpose assistant. Learned replies and `teach me: question | answer` take precedence over generated text.
+The bot uses a small, local PyTorch transformer to answer chat messages that do not match a learned reply. The included model has 84,096 parameters and is trained only on the bot-focused example dialogue; it is experimental, not a general-purpose assistant. Learned replies and `teach me: question | answer` take precedence over generated text.
 
 Create a Python 3.11 virtual environment, install `requirements.txt`, then train the checkpoint:
 

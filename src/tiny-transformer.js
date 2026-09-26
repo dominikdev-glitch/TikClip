@@ -42,7 +42,12 @@ function createTinyTransformerClient({
 
   function startWorker() {
     if (worker) return worker;
-    if (unavailable || !fs.existsSync(modelPath)) return null;
+    if (unavailable) return null;
+    if (!fs.existsSync(modelPath)) {
+      unavailable = true;
+      reportError(new Error(`Transformer checkpoint is missing: ${modelPath}`));
+      return null;
+    }
 
     try {
       worker = spawn(
@@ -98,8 +103,9 @@ function createTinyTransformerClient({
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         pending.delete(id);
+        reportError(new Error('Transformer response timed out after 60 seconds'));
         resolve(null);
-      }, 15000);
+      }, 60000);
       timer.unref();
       pending.set(id, (value) => {
         clearTimeout(timer);

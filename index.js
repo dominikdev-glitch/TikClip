@@ -52,6 +52,12 @@ const localChatbot = createLocalChatbot({
 const tinyTransformer = createTinyTransformerClient({
   onError: (error) => log('warn', 'Tiny transformer unavailable', { error: error.message }),
 });
+tinyTransformer.reply('hello').then((reply) => {
+  log(
+    reply ? 'log' : 'warn',
+    reply ? 'Tiny transformer ready' : 'Tiny transformer unavailable; chatbot fallback is active',
+  );
+});
 
 const rateLimitCleanup = setInterval(
   () => rateLimiter.cleanup(),
@@ -346,7 +352,10 @@ bot.on('callback_query:data', async (ctx) => {
     return;
   }
 
+  await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
+
   if (onboardingUsers.has(String(ctx.from.id)) && action === 'connect-youtube') {
+    onboardingUsers.delete(String(ctx.from.id));
     try {
       await ctx.reply('Connect YouTube for uploads:', {
         reply_markup: new InlineKeyboard().url(
