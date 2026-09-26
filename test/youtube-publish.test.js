@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   createYouTubePublisher,
+  getActualPrivacyStatus,
   getYouTubeCaption,
 } = require('../src/youtube-publish');
 
@@ -39,6 +40,14 @@ test('keeps the TikTok caption and hashtags intact', () => {
   const caption = 'New clip #music #dance';
   assert.equal(getYouTubeCaption({ title: caption }), caption);
   assert.equal(getYouTubeCaption({ title: '  ' }), 'TikClip video');
+});
+
+test('uses actual YouTube visibility when the API returns it', () => {
+  assert.equal(
+    getActualPrivacyStatus({ privacyStatus: 'private' }, 'public'),
+    'private',
+  );
+  assert.equal(getActualPrivacyStatus(undefined, 'public'), 'public');
 });
 
 test('creates a YouTube OAuth URL with upload scope and state', () => {

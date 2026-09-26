@@ -11,6 +11,7 @@ const {
   getMediaUrl,
 } = require('./src/tikwm');
 const { handleWebRequest } = require('./src/web');
+const { downloadTelegramVideo } = require('./src/telegram-video');
 const {
   createYouTubePublisher,
   getYouTubeCaption,
@@ -259,24 +260,25 @@ async function handleTikTokMessage(ctx, tikTokUrl) {
   }
 }
 
-async function handleYouTubePost(ctx, tikTokUrl) {
-  const statusMessage = await ctx.reply(
-    '⏳ Preparing your private YouTube upload...',
-  );
+async function uploadYouTubeVideo(ctx, loadVideo) {
+  const statusMessage = await ctx.reply('⏳ Preparing your YouTube upload...');
   try {
-    const video = await fetchVideo(tikTokUrl, config);
-    const videoBuffer = await downloadVideo(getMediaUrl(video), config);
-    const sourceCaption = getYouTubeCaption(video);
-    const videoId = await youtubePublisher.uploadVideo(
+    const { videoBuffer, caption } = await loadVideo();
+    const upload = await youtubePublisher.uploadVideo(
       ctx.from.id,
       videoBuffer,
-      sourceCaption,
-      sourceCaption,
+      caption,
+      caption,
     );
+    const visibilityMessage =
+      config.youtubePrivacyStatus === 'public' &&
+      upload.privacyStatus !== 'public'
+        ? ' YouTube restricted its visibility; check your API project audit status.'
+        : '';
     await ctx.api.editMessageText(
       ctx.chat.id,
       statusMessage.message_id,
-      `YouTube upload complete and set to ${youtubePublisher.privacyStatus}.\nhttps://youtu.be/${videoId}`,
+      `YouTube upload complete (${upload.privacyStatus}).${visibilityMessage}\nhttps://youtu.be/${upload.id}`,
     );
   } catch (error) {
     log('error', 'YouTube upload failed', {
@@ -289,6 +291,29 @@ async function handleYouTubePost(ctx, tikTokUrl) {
       `YouTube upload failed: ${error.message}`,
     );
   }
+}
+
+async function handleYouTubePost(ctx, tikTokUrl) {
+  return uploadYouTubeVideo(ctx, async () => {
+    const video = await fetchVideo(tikTokUrl, config);
+    return {
+      videoBuffer: await downloadVideo(getMediaUrl(video), config),
+      caption: getYouTubeCaption(video),
+    };
+  });
+}
+
+async function handleTelegramVideoYouTubeUpload(ctx, video, messageCaption) {
+  return uploadYouTubeVideo(ctx, async () => ({
+    videoBuffer: await downloadTelegramVideo({
+      getFile: (fileId) => ctx.api.getFile(fileId),
+      fileId: video.file_id,
+      botToken: config.botToken,
+      maxBytes: config.maxVideoSizeBytes,
+      requestTimeout: config.requestTimeout,
+    }),
+    caption: getYouTubeCaption({ title: messageCaption }),
+  }));
 }
 
 bot.command('start', async (ctx) => {
@@ -424,6 +449,15 @@ bot.on('callback_query:data', async (ctx) => {
   }
 
   if (action === 'post-youtube') {
+    const message = ctx.callbackQuery.message;
+    if (message?.video?.file_id) {
+      return handleTelegramVideoYouTubeUpload(
+        ctx,
+        message.video,
+        message.caption,
+      );
+    }
+
     pendingActions.set(String(ctx.from.id), action);
     await ctx.reply('Send the TikTok link to upload to YouTube.');
   }

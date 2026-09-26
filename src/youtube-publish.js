@@ -9,6 +9,10 @@ function getYouTubeCaption(video) {
   return String(video?.title || '').trim() || 'TikClip video';
 }
 
+function getActualPrivacyStatus(status, requestedStatus) {
+  return status?.privacyStatus || requestedStatus;
+}
+
 function createYouTubePublisher(options) {
   const pendingStates = new Map();
   const clients = new Map();
@@ -111,7 +115,13 @@ function createYouTubePublisher(options) {
       },
     });
 
-    return response.data?.id;
+    return {
+      id: response.data?.id,
+      privacyStatus: getActualPrivacyStatus(
+        response.data?.status,
+        privacyStatus,
+      ),
+    };
   }
 
   async function checkUrl(url) {
@@ -132,4 +142,8 @@ function createYouTubePublisher(options) {
   };
 }
 
-module.exports = { createYouTubePublisher, getYouTubeCaption };
+module.exports = {
+  createYouTubePublisher,
+  getActualPrivacyStatus,
+  getYouTubeCaption,
+};
