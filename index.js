@@ -13,6 +13,14 @@ const {
 const { handleWebRequest } = require('./src/web');
 const { createTikTokPublisher } = require('./src/tiktok-publish');
 const { createYouTubePublisher } = require('./src/youtube-publish');
+const {
+  menuKeyboard,
+  onboardingKeyboard,
+  videoActionKeyboard,
+} = require('./src/keyboard');
+const { createLocalChatbot } = require('./src/chatbot');
+const { createTinyTransformerClient } = require('./src/tiny-transformer');
+const { verifyLoginPin } = require('./src/login-pin');
 
 const bot = new Bot(config.botToken);
 const rateLimiter = new RateLimiter({
@@ -25,7 +33,14 @@ const concurrencyLimiter = new ConcurrencyLimiter(
 const activeUrls = new Set();
 const telegramCaptionLimit = 1_024;
 const acceptedUsers = new Set();
+const authenticatedUsers = new Set();
+const awaitingLoginPin = new Set();
+const onboardingUsers = new Set();
 const pendingActions = new Map();
+const loginPinLimiter = new RateLimiter({
+  windowMs: config.rateLimitWindow,
+  maxRequests: config.rateLimitMaxRequests,
+});
 const tikTokPublisher = createTikTokPublisher({
   clientKey: config.tikTokClientKey,
   clientSecret: config.tikTokClientSecret,
@@ -38,6 +53,12 @@ const youtubePublisher = createYouTubePublisher({
   clientSecret: config.youtubeClientSecret,
   redirectUri: config.youtubeRedirectUri,
   requestTimeout: config.requestTimeout,
+});
+const localChatbot = createLocalChatbot({
+  memoryFile: './data/chatbot-memory.json',
+});
+const tinyTransformer = createTinyTransformerClient({
+  onError: (error) => log('warn', 'Tiny transformer unavailable', { error: error.message }),
 });
 
 const rateLimitCleanup = setInterval(
@@ -168,19 +189,6 @@ async function updateStatusWithError(ctx, statusMessage, message) {
   }
 }
 
-function menuKeyboard() {
-  return new InlineKeyboard()
-    .text('Download video', 'action:download')
-    .row()
-    .text('Connect TikTok', 'action:connect-tiktok')
-    .text('Post to TikTok', 'action:post-tiktok')
-    .row()
-    .text('Connect YouTube', 'action:connect-youtube')
-    .text('Upload to YouTube', 'action:post-youtube')
-    .row()
-    .text('Help', 'action:help');
-}
-
 function hasAccepted(userId) {
   return acceptedUsers.has(String(userId));
 }
@@ -198,6 +206,36 @@ async function requireAccepted(ctx) {
   );
   return false;
 }
+
+bot.use(async (ctx, next) => {
+  const userId = ctx.from?.id;
+  if (userId === undefined) return next();
+
+  const userKey = String(userId);
+  const messageText = ctx.message?.text || '';
+  if (/^\/start(?:@\w+)?(?:\s|$)/i.test(messageText)) return next();
+
+  if (!authenticatedUsers.has(userKey)) {
+    if (awaitingLoginPin.has(userKey) && messageText && !messageText.startsWith('/')) {
+      return next();
+    }
+    await ctx.reply('Please use /start and enter the access PIN to continue.');
+    return;
+  }
+
+  if (onboardingUsers.has(userKey)) {
+    const allowedActions = new Set([
+      'action:connect-tiktok',
+      'action:connect-youtube',
+      'action:onboarding-skip',
+    ]);
+    if (allowedActions.has(ctx.callbackQuery?.data)) return next();
+    await ctx.reply('Choose a platform to connect, or tap Nevermind to continue.');
+    return;
+  }
+
+  return next();
+});
 
 async function handleTikTokMessage(ctx, tikTokUrl) {
   const chatId = ctx.chat.id;
@@ -235,7 +273,10 @@ async function handleTikTokMessage(ctx, tikTokUrl) {
         throw new Error('The video is too large to send through Telegram.');
       }
 
-      await ctx.replyWithVideo(videoUrl, { caption: getVideoCaption(video) });
+      await ctx.replyWithVideo(videoUrl, {
+        caption: getVideoCaption(video),
+        reply_markup: videoActionKeyboard(),
+      });
     });
 
     await ctx.api.deleteMessage(chatId, statusMessage.message_id);
@@ -316,10 +357,18 @@ async function handleYouTubePost(ctx, tikTokUrl) {
 }
 
 bot.command('start', async (ctx) => {
-  await ctx.reply(
-    'Welcome to TikClip. Choose an action below, then follow the prompts.',
-    { reply_markup: menuKeyboard() },
-  );
+  const userKey = String(ctx.from.id);
+  authenticatedUsers.delete(userKey);
+  onboardingUsers.delete(userKey);
+
+  if (!config.loginPin) {
+    awaitingLoginPin.delete(userKey);
+    await ctx.reply('Bot login is not configured. Set BOT_LOGIN_PIN in the environment.');
+    return;
+  }
+
+  awaitingLoginPin.add(userKey);
+  await ctx.reply('Welcome to TikClip. Enter the access PIN to continue.');
 });
 
 bot.command('help', async (ctx) => {
@@ -432,6 +481,49 @@ bot.on('callback_query:data', async (ctx) => {
     return;
   }
 
+  if (action === 'onboarding-skip') {
+    onboardingUsers.delete(String(ctx.from.id));
+    await ctx.editMessageText(
+      'Welcome to TikClip. Choose an action below, then follow the prompts.',
+      { reply_markup: menuKeyboard() },
+    );
+    return;
+  }
+
+  if (onboardingUsers.has(String(ctx.from.id)) && action === 'connect-tiktok') {
+    try {
+      await ctx.reply('Connect TikTok for posting:', {
+        reply_markup: new InlineKeyboard().url(
+          'Authorize TikTok',
+          tikTokPublisher.getAuthorizationUrl(ctx.from.id),
+        ),
+      });
+    } catch (error) {
+      await ctx.reply('TikTok posting is not configured yet.');
+      log('error', 'Could not create TikTok authorization URL', {
+        error: error.message,
+      });
+    }
+    return;
+  }
+
+  if (onboardingUsers.has(String(ctx.from.id)) && action === 'connect-youtube') {
+    try {
+      await ctx.reply('Connect YouTube for uploads:', {
+        reply_markup: new InlineKeyboard().url(
+          'Authorize YouTube',
+          youtubePublisher.getAuthorizationUrl(ctx.from.id),
+        ),
+      });
+    } catch (error) {
+      await ctx.reply('YouTube uploading is not configured yet.');
+      log('error', 'Could not create YouTube authorization URL', {
+        error: error.message,
+      });
+    }
+    return;
+  }
+
   if (!(await requireAccepted(ctx))) return;
 
   if (action === 'help') {
@@ -492,15 +584,50 @@ bot.on('callback_query:data', async (ctx) => {
 });
 
 bot.on('message:text', async (ctx) => {
-  const tikTokUrl = extractTikTokUrl(ctx.message.text);
-  if (!tikTokUrl) return;
+  const text = ctx.message.text || '';
+  const userKey = String(ctx.from.id);
+  const tikTokUrl = extractTikTokUrl(text);
+
+  if (text.startsWith('/')) return;
+
+  if (awaitingLoginPin.has(userKey)) {
+    if (!loginPinLimiter.allow(userKey)) {
+      await ctx.reply('Too many PIN attempts. Please wait a minute and try again.');
+      return;
+    }
+
+    if (!verifyLoginPin(config.loginPin, text)) {
+      await ctx.reply('That PIN is not correct. Please try again.');
+      return;
+    }
+
+    awaitingLoginPin.delete(userKey);
+    authenticatedUsers.add(userKey);
+    onboardingUsers.add(userKey);
+    await ctx.reply('PIN accepted. Connect an account now, or choose Nevermind.', {
+      reply_markup: onboardingKeyboard(),
+    });
+    return;
+  }
+
+  if (tikTokUrl) {
+    if (!(await requireAccepted(ctx))) return;
+
+    const action = pendingActions.get(String(ctx.from.id)) || 'download';
+    pendingActions.delete(String(ctx.from.id));
+    if (action === 'post-tiktok') return handleTikTokPost(ctx, tikTokUrl);
+    if (action === 'post-youtube') return handleYouTubePost(ctx, tikTokUrl);
+    return handleTikTokMessage(ctx, tikTokUrl);
+  }
+
   if (!(await requireAccepted(ctx))) return;
 
-  const action = pendingActions.get(String(ctx.from.id)) || 'download';
-  pendingActions.delete(String(ctx.from.id));
-  if (action === 'post-tiktok') return handleTikTokPost(ctx, tikTokUrl);
-  if (action === 'post-youtube') return handleYouTubePost(ctx, tikTokUrl);
-  return handleTikTokMessage(ctx, tikTokUrl);
+  const response = await localChatbot.replyWithModel(
+    text,
+    String(ctx.from.id),
+    tinyTransformer.reply,
+  );
+  await ctx.reply(response);
 });
 
 bot.catch((error) => {
@@ -509,6 +636,7 @@ bot.catch((error) => {
 
 const shutdown = (signal) => {
   log('log', 'Stopping bot', { signal });
+  tinyTransformer.close();
   bot.stop();
   healthServer.close();
 };

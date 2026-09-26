@@ -11,6 +11,8 @@ services:
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: BOT_LOGIN_PIN
+        sync: false
       - key: TIKWM_API_URL
         value: https://www.tikwm.com/api/
       - key: REQUEST_TIMEOUT_MS
@@ -36,6 +38,8 @@ services:
       - key: YOUTUBE_CLIENT_ID
         sync: false
       - key: YOUTUBE_CLIENT_SECRET
+        sync: false
+      - key: YOUTUBE_CLIENT_JSON
         sync: false
       - key: YOUTUBE_REDIRECT_URI
         value: https://tikclip-bot.onrender.com/auth/youtube/callback

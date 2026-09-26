@@ -1,5 +1,8 @@
 require('dotenv').config();
 
+const { loadYouTubeCredentials } = require('./youtube-credentials');
+const youtubeCredentials = loadYouTubeCredentials();
+
 function getPositiveInteger(name, fallback) {
   const value = Number.parseInt(process.env[name] || fallback, 10);
 
@@ -20,6 +23,7 @@ if (!botToken) {
 
 module.exports = {
   botToken,
+  loginPin: process.env.BOT_LOGIN_PIN || '',
   tikwmApiUrl: process.env.TIKWM_API_URL || 'https://www.tikwm.com/api/',
   requestTimeout: getPositiveInteger('REQUEST_TIMEOUT_MS', 30_000),
   apiRetries: getPositiveInteger('API_RETRIES', 2),
@@ -33,9 +37,7 @@ module.exports = {
   tikTokRedirectUri:
     process.env.TIKTOK_REDIRECT_URI ||
     'https://tikclip-bot.onrender.com/auth/tiktok/callback',
-  youtubeClientId: process.env.YOUTUBE_CLIENT_ID || '',
-  youtubeClientSecret: process.env.YOUTUBE_CLIENT_SECRET || '',
-  youtubeRedirectUri:
-    process.env.YOUTUBE_REDIRECT_URI ||
-    'https://tikclip-bot.onrender.com/auth/youtube/callback',
+  youtubeClientId: youtubeCredentials.clientId,
+  youtubeClientSecret: youtubeCredentials.clientSecret,
+  youtubeRedirectUri: youtubeCredentials.redirectUri,
 };

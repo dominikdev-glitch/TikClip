@@ -16,10 +16,11 @@ A Telegram bot that accepts TikTok links and sends back high-quality videos with
    npm install
    ```
 
-3. Copy `.env.example` to `.env` and add the BotFather token. The other values have safe defaults, but can be adjusted for your deployment:
+3. Copy `.env.example` to `.env`, add the BotFather token, and choose a private `BOT_LOGIN_PIN`:
 
    ```env
    TELEGRAM_BOT_TOKEN=your_bot_token_here
+   BOT_LOGIN_PIN=choose_a_private_pin
    TIKWM_API_URL=https://www.tikwm.com/api/
    ```
 
@@ -29,13 +30,13 @@ A Telegram bot that accepts TikTok links and sends back high-quality videos with
    npm start
    ```
 
-Send `/start` to the bot, then send a TikTok video URL.
+Send `/start` and enter your `BOT_LOGIN_PIN`. Then connect TikTok or YouTube, or tap **Nevermind** to open the usual bot menu. PIN attempts are rate-limited. Set the same variable in Render's environment for deployed use.
 
 Use the inline buttons after `/start`; `/menu` opens them again. The bot accepts standard `tiktok.com` URLs and `vm.tiktok.com` or `vt.tiktok.com` shortlinks. Slash commands such as `/connect`, `/post`, and `/connect-youtube` remain available as fallbacks.
 
 To publish an authorized video to TikTok, use `/connect` and complete TikTok authorization in your browser. Then send `/post` followed by a TikTok URL. TikTok must approve the `video.publish` scope for the app; unaudited apps may be limited to private posts. TikTok access tokens are currently held in memory, so users must reconnect after a service restart.
 
-To upload a downloaded video to YouTube, use the **Connect YouTube** button and complete Google OAuth, then use **Upload to YouTube** and send a TikTok link. YouTube uploads are created as private videos by default. Create OAuth credentials in Google Cloud Console, enable the YouTube Data API v3, and register `https://tikclip-bot.onrender.com/auth/youtube/callback` as an authorized redirect URI. Add `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` to Render.
+To upload a downloaded video to YouTube, use the **Connect YouTube** button and complete Google OAuth, then use **Upload to YouTube** and send a TikTok link. YouTube uploads are created as private videos by default. Create OAuth credentials for a Web application in Google Cloud Console and enable YouTube Data API v3. Locally, put Google's downloaded OAuth client JSON in the workspace root as `secret.json`; the bot reads `web` or `installed` credentials and supports flat `client_id`/`client_secret` fields. Environment variables override file values. Register `https://tikclip-bot.onrender.com/auth/youtube/callback` as an authorized redirect URI. On Render, paste the full downloaded JSON into the secret `YOUTUBE_CLIENT_JSON` environment variable, or use `YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` separately.
 
 The bot limits each user to five requests per minute, processes up to two downloads concurrently, retries temporary TikWM failures, rejects media larger than Telegram’s configured limit, and avoids duplicate requests in the same chat.
 
@@ -50,6 +51,20 @@ npm audit --omit=dev
 ```
 
 GitHub Actions runs the same checks for pushes and pull requests.
+
+## Optional Local Transformer
+
+The bot can use a small, local PyTorch transformer to answer chat messages that do not match a learned reply. The included model has 83,840 parameters and is trained only on the bot-focused example dialogue; it is experimental, not a general-purpose assistant. Learned replies and `teach me: question | answer` take precedence over generated text.
+
+Create a Python 3.11 virtual environment, install `requirements.txt`, then train the checkpoint:
+
+```powershell
+py -3.11 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe llm\tiny_transformer.py --train
+```
+
+The Node bot detects the local checkpoint and starts one persistent inference worker automatically. Set `TINY_LLM_PYTHON` if Python is not at `.venv`. Without a usable Python environment or trained checkpoint, the bot continues using its existing memory-based fallback. The Render blueprint is Node-only, so the transformer is not enabled there by default.
 
 ## Render Deployment
 

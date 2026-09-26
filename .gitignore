@@ -1,2 +1,10 @@
 node_modules/
 .env
+secret.json
+client_secret*.json
+.venv/
+__pycache__/
+*.py[cod]
+llm/*.pt
+data/chatbot-memory.json
+test/.chatbot-memory-*.json

@@ -2,7 +2,7 @@ const globals = require('globals');
 
 module.exports = [
   {
-    ignores: ['node_modules/**', 'coverage/**'],
+    ignores: ['node_modules/**', 'coverage/**', '.venv/**'],
   },
   {
     files: ['**/*.js'],
